@@ -1,10 +1,11 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from contextlib import asynccontextmanager
+from sqlalchemy import inspect
+from typing import Dict, Any, List
 import aiosqlite
 
-# Create async engine for SQLite
+# Create async engine
 engine = create_async_engine(
     "sqlite+aiosqlite:///tasks.db",
     connect_args={"check_same_thread": False},
@@ -12,39 +13,25 @@ engine = create_async_engine(
     echo=True
 )
 
-# Create async session factory
+# Create session factory
 AsyncSessionLocal = sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False
 )
 
-# Dependency for FastAPI
-async def get_db():
-    session = AsyncSessionLocal()
-    try:
-        yield session
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
-    finally:
-        await session.close()
+async def get_session():
+    """Get a database session."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-# Function to get inspector
-async def get_inspector(session):
-    """Get SQLAlchemy inspector for the database."""
-    def _get_inspector():
-        from sqlalchemy import inspect
-        return inspect(session.bind)
-    return await session.run_sync(_get_inspector)
-
-# Function to list tables
-async def list_tables(session):
-    """List all tables in the database with their schema."""
-    inspector = await get_inspector(session)
-    
-    def get_table_info():
+async def get_tables(session: AsyncSession) -> Dict[str, List[Dict[str, Any]]]:
+    """Get all tables and their schema."""
+    def get_schema():
+        inspector = inspect(session.bind)
         tables = []
         for table_name in inspector.get_table_names():
             columns = []
@@ -60,4 +47,5 @@ async def list_tables(session):
             })
         return tables
     
-    return {"tables": await session.run_sync(lambda: get_table_info())}
+    tables = await session.run_sync(lambda: get_schema())
+    return {"tables": tables} 

@@ -7,10 +7,14 @@ from datetime import datetime, timedelta
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
-from rich.panel import Panel
-from rich import print as rprint
+import logging
 
-console = Console()
+# Suppress websockets and asyncio logging
+logging.getLogger('websockets').setLevel(logging.ERROR)
+logging.getLogger('asyncio').setLevel(logging.ERROR)
+
+# Configure minimal console output
+console = Console(stderr=False)
 
 class TaskManagerCLI:
     def __init__(self, uri="ws://127.0.0.1:8000/ws"):
@@ -19,7 +23,7 @@ class TaskManagerCLI:
     async def send_query(self, query: str) -> dict:
         """Send a query to the WebSocket server and return the response."""
         try:
-            async with websockets.connect(self.uri) as websocket:
+            async with websockets.connect(self.uri, logger=None) as websocket:
                 await websocket.send(query)
                 response = await websocket.recv()
                 return json.loads(response)
@@ -37,21 +41,26 @@ class TaskManagerCLI:
                 elif "tables" in response["data"]:
                     self.display_database_schema(response["data"]["tables"])
                 else:
-                    rprint(Panel(response["response"], title="Success", border_style="green"))
+                    console.print(response["response"], style="green")
                     if response.get("data"):
-                        rprint(response["data"])
+                        console.print(response["data"])
             else:
-                rprint(Panel(response["response"], title="Success", border_style="green"))
+                console.print(response["response"], style="green")
                 if response.get("data"):
-                    rprint(response["data"])
+                    console.print(response["data"])
         else:
-            rprint(Panel(response["response"], title="Error", border_style="red"))
+            console.print(f"Error: {response['response']}", style="red")
 
     def display_tasks_table(self, tasks: list):
         """Display tasks in a formatted table."""
-        table = Table(title="Tasks")
-        table.add_column("ID", justify="right", style="cyan")
-        table.add_column("Title", style="magenta")
+        if not tasks:
+            console.print("No tasks found.", style="yellow")
+            return
+
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Title", style="white")
+        table.add_column("Description", style="white")
         table.add_column("Status", style="green")
         table.add_column("Priority", style="yellow")
         table.add_column("Due Date", style="blue")
@@ -62,20 +71,26 @@ class TaskManagerCLI:
             table.add_row(
                 str(task.get("task_id", "")),
                 task.get("title", ""),
+                task.get("description", "")[:50] + "..." if task.get("description", "") and len(task.get("description", "")) > 50 else task.get("description", ""),
                 task.get("status", ""),
                 task.get("priority", ""),
                 task.get("due_date", ""),
-                str(task.get("project_id", "")),
+                task.get("project_name", "None"),
                 str(task.get("assigned_to", ""))
             )
 
         console.print(table)
+        console.print(f"\nTotal tasks: {len(tasks)}", style="blue")
 
     def display_projects_table(self, projects: list):
         """Display projects in a formatted table."""
-        table = Table(title="Projects")
-        table.add_column("ID", justify="right", style="cyan")
-        table.add_column("Name", style="magenta")
+        if not projects:
+            console.print("No projects found.", style="yellow")
+            return
+
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Name", style="white")
         table.add_column("Description", style="green")
         table.add_column("Created At", style="blue")
 
@@ -88,23 +103,32 @@ class TaskManagerCLI:
             )
 
         console.print(table)
+        console.print(f"\nTotal projects: {len(projects)}", style="blue")
 
     def display_database_schema(self, tables: list):
-        """Display database schema in a formatted way."""
+        """Display database schema in a formatted table."""
+        if not tables:
+            console.print("No tables found.", style="yellow")
+            return
+
         for table_info in tables:
-            table = Table(title=f"Table: {table_info['name']}", border_style="blue")
-            table.add_column("Column", style="cyan")
-            table.add_column("Type", style="magenta")
-            table.add_column("Nullable", style="green")
+            schema_table = Table(
+                title=f"Table: {table_info['name']}", 
+                show_header=True, 
+                header_style="bold cyan"
+            )
+            schema_table.add_column("Column Name", style="white")
+            schema_table.add_column("Type", style="green")
+            schema_table.add_column("Nullable", style="yellow")
 
             for column in table_info["columns"]:
-                table.add_row(
+                schema_table.add_row(
                     column["name"],
-                    column["type"],
-                    "Yes" if column["nullable"] else "No"
+                    str(column["type"]),
+                    "Yes" if column.get("nullable", True) else "No"
                 )
 
-            console.print(table)
+            console.print(schema_table)
             console.print()
 
 @click.group()
@@ -113,150 +137,30 @@ def cli():
     pass
 
 @cli.command()
-@click.option('--title', prompt='Task title', help='Title of the task')
-@click.option('--priority', type=click.Choice(['low', 'medium', 'high'], case_sensitive=False), prompt=True)
-@click.option('--project', help='Project name (optional)')
-@click.option('--due', help='Due date (e.g., "tomorrow", "next friday", "2024-01-01")')
-@click.option('--assign', help='Username to assign the task to')
-def create_task(title, priority, project, due, assign):
-    """Create a new task"""
-    query = f"Create task '{title}' with {priority} priority"
-    if project:
-        query += f" for project '{project}'"
-    if due:
-        query += f" due {due}"
-    if assign:
-        query += f" and assign to {assign}"
-    
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(query)
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-@click.option('--priority', type=click.Choice(['low', 'medium', 'high']), help='Filter by priority')
-@click.option('--status', type=click.Choice(['pending', 'in_progress', 'completed']), help='Filter by status')
-@click.option('--project', help='Filter by project name')
-@click.option('--assigned', help='Filter by assigned user')
-def list_tasks(priority, status, project, assigned):
-    """List tasks with optional filters"""
-    query = "Show"
-    if priority:
-        query += f" {priority} priority"
-    if status:
-        query += f" {status}"
-    query += " tasks"
-    if project:
-        query += f" in project '{project}'"
-    if assigned:
-        query += f" assigned to {assigned}"
-    
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(query)
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-@click.argument('task_id')
-@click.option('--status', type=click.Choice(['pending', 'in_progress', 'completed']), help='New status')
-@click.option('--priority', type=click.Choice(['low', 'medium', 'high']), help='New priority')
-@click.option('--assign', help='Username to assign the task to')
-def update_task(task_id, status, priority, assign):
-    """Update a task's status, priority, or assignment"""
-    if not any([status, priority, assign]):
-        click.echo("Please specify at least one attribute to update")
-        return
-    
-    query = f"Update task {task_id}"
-    if status:
-        query += f" set status to {status}"
-    if priority:
-        query += f" set priority to {priority}"
-    if assign:
-        query += f" assign to {assign}"
-    
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(query)
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-@click.argument('task_id')
-def delete_task(task_id):
-    """Delete a task"""
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(f"Delete task {task_id}")
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-@click.option('--name', prompt='Project name', help='Name of the project')
-@click.option('--description', prompt='Project description', help='Description of the project')
-def create_project(name, description):
-    """Create a new project"""
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(f"Create project '{name}' with description '{description}'")
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-def list_projects():
-    """List all projects"""
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query("Show all projects")
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-@click.argument('task_id')
-@click.argument('tag_name')
-def add_tag(task_id, tag_name):
-    """Add a tag to a task"""
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(f"Add tag '{tag_name}' to task {task_id}")
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
-@click.argument('tag_name')
-def list_by_tag(tag_name):
-    """List all tasks with a specific tag"""
-    async def run():
-        cli = TaskManagerCLI()
-        response = await cli.send_query(f"Show tasks with tag '{tag_name}'")
-        cli.display_response(response)
-    
-    asyncio.run(run())
-
-@cli.command()
 def interactive():
     """Start an interactive session"""
     async def run():
         cli = TaskManagerCLI()
-        console.print(Panel.fit("Welcome to Task Manager CLI", border_style="green"))
-        console.print("Type 'exit' to quit")
         
         while True:
-            query = Prompt.ask("\nEnter your command")
-            if query.lower() == 'exit':
+            try:
+                query = Prompt.ask("\nEnter your command")
+                if query.lower() in ['exit', 'quit']:
+                    break
+                
+                # Special handling for delete all tasks
+                if query.lower() in ['delete all tasks', 'remove all tasks']:
+                    confirm = Prompt.ask("Are you sure you want to delete all tasks? (yes/no)")
+                    if confirm.lower() != 'yes':
+                        console.print("Operation cancelled.", style="yellow")
+                        continue
+                
+                response = await cli.send_query(query)
+                cli.display_response(response)
+            except KeyboardInterrupt:
                 break
-            
-            response = await cli.send_query(query)
-            cli.display_response(response)
+            except Exception as e:
+                console.print(f"Error: {str(e)}", style="red")
     
     asyncio.run(run())
 

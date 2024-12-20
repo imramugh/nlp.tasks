@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import json
 from contextlib import asynccontextmanager
 
-from database import get_db, engine
+from async_db import engine, AsyncSessionLocal, get_session
 from nlp_processor import NLPProcessor
 from models import Base
 
@@ -43,26 +43,29 @@ async def websocket_endpoint(websocket: WebSocket):
             # Receive message from client
             data = await websocket.receive_text()
             
-            # Process the natural language query using a new session
-            async with AsyncSession(engine) as session:
-                try:
-                    result = await nlp_processor.process_query(data, session)
-                    await session.commit()
-                    
-                    # Send response back to client
-                    await websocket.send_text(json.dumps({
-                        "success": True,
-                        "response": result.get("response", ""),
-                        "data": result.get("data", None)
-                    }))
-                except Exception as query_error:
-                    await session.rollback()
-                    # Handle query-specific errors
-                    await websocket.send_text(json.dumps({
-                        "success": False,
-                        "response": f"Error processing query: {str(query_error)}",
-                        "data": None
-                    }))
+            # Create a new session for each request
+            session = AsyncSessionLocal()
+            try:
+                # Process the natural language query
+                result = await nlp_processor.process_query(data, session)
+                await session.commit()
+                
+                # Send response back to client
+                await websocket.send_text(json.dumps({
+                    "success": True,
+                    "response": result.get("response", ""),
+                    "data": result.get("data", None)
+                }))
+            except Exception as query_error:
+                await session.rollback()
+                # Handle query-specific errors
+                await websocket.send_text(json.dumps({
+                    "success": False,
+                    "response": f"Error processing query: {str(query_error)}",
+                    "data": None
+                }))
+            finally:
+                await session.close()
     
     except Exception as e:
         # Handle connection errors
@@ -87,7 +90,7 @@ async def health_check():
 
 # Example REST endpoint for direct task creation
 @app.post("/tasks")
-async def create_task(task_data: dict, session: AsyncSession = Depends(get_db)):
+async def create_task(task_data: dict, session: AsyncSession = Depends(get_session)):
     try:
         result = await nlp_processor.process_query(
             f"Create a task with title '{task_data['title']}' "
