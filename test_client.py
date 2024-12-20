@@ -2,6 +2,12 @@ import asyncio
 import websockets
 import json
 
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 async def test_natural_language_queries():
     uri = "ws://localhost:8000/ws"
     async with websockets.connect(uri) as websocket:

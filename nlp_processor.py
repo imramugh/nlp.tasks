@@ -1,3 +1,9 @@
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 import openai
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta

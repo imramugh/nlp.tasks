@@ -1,3 +1,9 @@
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 from typing import Dict, Any, List, Optional
 import openai
 from sqlalchemy.ext.asyncio import AsyncSession

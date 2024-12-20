@@ -1,3 +1,9 @@
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool

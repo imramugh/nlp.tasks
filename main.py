@@ -1,3 +1,9 @@
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 import os
 from fastapi import FastAPI, WebSocket, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware

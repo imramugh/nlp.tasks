@@ -2,6 +2,12 @@ from sqlalchemy import Column, Integer, String, ForeignKey, Table, DateTime, Che
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 Base = declarative_base()
 
 # Junction table for task-tag relationship

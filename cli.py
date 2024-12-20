@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 import asyncio
 import websockets
 import json

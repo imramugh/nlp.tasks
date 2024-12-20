@@ -1,3 +1,9 @@
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 import sqlite3
 import os
 from datetime import datetime

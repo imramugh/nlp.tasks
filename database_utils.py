@@ -1,3 +1,9 @@
+"""
+Author: Imran Mughal
+Email: imran@mughal.com
+Date: December 19, 2024
+"""
+
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, List
